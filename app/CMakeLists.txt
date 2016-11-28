@@ -42,7 +42,7 @@ set_target_properties( kudancv-lib
 
                        PROPERTIES IMPORTED_LOCATION
 
-                       ${CMAKE_CURRENT_SOURCE_DIR}/libs/KudanCV/bin/${ANDROID_ABI}/libKudan.so )
+                       ${CMAKE_CURRENT_SOURCE_DIR}/libs/KudanCV/bin/${ANDROID_ABI}/libKudanCV.so )
 
 # Set the path of the KudanCV library headers.
 
