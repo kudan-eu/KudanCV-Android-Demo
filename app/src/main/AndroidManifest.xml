@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="eu.kudan.ar">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.camera" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/kudan_logo"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <meta-data
+            android:name="eu.kudan.ar.API_KEY"
+            android:value="ku/Olv0UEzzcJ+/qdVjsRDipQ3E+3vVCxW6MDVuZfe6jPsk+F4Vdt5491TBCJ0XIBKitse0vBzqfAyAL7k2Yk5E/064p3h7qX7BfpePajBwaMuZq07WLTuTm6UQqn1vi1EsCsmKfAYsU+8SHg7nnGEBq/y7ETCD2gg9n7Az3aUS2Zmas+KTHXpN513BAz3oiemSV+fy6UuFDv2wWPtEEbHjzVzUmmLUQZNTRC14S81OEvOSZuGTMhKxn+h4EJWLqnrUndjjZikWe8+Lpt+YGxt/19zttEbDalcF42BomBRwo1ober733TpTCvMjmNKrBqeJ8kTWL0nwuTv3Wmgw+G711nUvaP6CC+B3zp32jmT9viA5hx/R78gkwa2XypZOsAwQqzR5Z/yC/sv9is8kCc2S+vJIW/yei/mZo4lGvz7sA0tf9I1b3EA8dPd//o2swDgEDNvLXk4Xwy+/ea+6cxgUIuuHRBN2onItZyL+m+NFi3wAlGtwEC9hF0GhbJZrMiyICok4m1r6RbjEFRq+NnnbbLQTylmzUHpKsU+GWrbNJnzFezIEno6ExXSWQN84tdmoNoabSE0CSlqjtAB2Zi2n+xf3QKetOT+eE8XGJn0OXKbpQpZ7pzSWjZ/hVO02agi/421Un/rb8vRX8aB4cKRTQWpv1Bc1+sTgHG8HHSOc=">
+        </meta-data>
+
+        <activity
+            android:name="eu.kudan.ar.MainActivity"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
