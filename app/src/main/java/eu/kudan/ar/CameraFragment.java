@@ -419,6 +419,10 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                 throw new RuntimeException("Could not get API Key from Android Manifest meta-data.\n\nMake sure the AndroidManifest.xml file contains a <meta-data\n\tandroid:name=\"" + apiKeyID + "\"\n\tandroid:value=\"${YOUR_API_KEY}\"></meta-data>\n");
             }
 
+            if (apiKey.isEmpty()) {
+                throw new RuntimeException("Your API Key from Android Manifest meta-data appears to be empty.\n\nMake sure the AndroidManifest.xml file contains a <meta-data\n\tandroid:name=\"" + apiKeyID + "\"\n\tandroid:value=\"${YOUR_API_KEY}\"></meta-data>\n");
+            }
+
             return apiKey;
 
         }
