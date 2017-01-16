@@ -1,14 +1,14 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
-#import <android/bitmap.h>
+#include <android/bitmap.h>
 
 #include <Interface.h>
 
 /**
  * Helper method for projecting 3D tracking points to screen-space.
  */
-KudanVector2 project(KudanVector3 X, KudanMatrix3 intrinsicMatrix, KudanVector3 position, KudanQuaternion orientation, float w) {
+KudanVector2 project(KudanVector3 X, KudanMatrix3 intrinsicMatrix, KudanVector3 position, KudanQuaternion orientation) {
 
     // to project a 3D point X (3x1) according to a camera with rotation R (3x3) and translation T (3x1), and the camera intrinsic matrkx K (3x3), xh = K[R|T]X = K*(RX + T), where xh is the homogeneous point
 
@@ -16,15 +16,14 @@ KudanVector2 project(KudanVector3 X, KudanMatrix3 intrinsicMatrix, KudanVector3 
     //KudanMatrix3 rotationMatrix = KudanQuaternion::quaternionToRotation(orientation);
     KudanMatrix3 rotationMatrix(orientation);
 
-    KudanVector3 RX = rotationMatrix.multiply(X);
-    KudanVector3 RXplusT = RX.add(position); // this is the point X expressed in the camera's coordinate frame
+    KudanVector3 RX = rotationMatrix * X;
+    KudanVector3 RXplusT = RX + position; // this is the point X expressed in the camera's coordinate frame
 
     // Project using the intrinsicmatrix:
-    KudanVector3 XH = intrinsicMatrix.multiply(RXplusT);
+    KudanVector3 XH = intrinsicMatrix * RXplusT;
 
     // Divide the homogeneous coordinates through by the z coordinate
-    // Note: also need to reflect in the horizontal direction, because of the reference frame in which the pose is given!
-    KudanVector2 pt(w - XH.x / XH.z , XH.y / XH.z);
+    KudanVector2 pt(XH.x / XH.z , XH.y / XH.z);
 
     return pt;
 }
@@ -64,7 +63,7 @@ void Java_eu_kudan_ar_CameraFragment_initialiseImageTracker(
     const char *keyStr = env->GetStringUTFChars(key, 0);
     std::string apiKey = std::string(keyStr);
 
-    imageTracker->setApiKey(keyStr);
+    imageTracker->setApiKey(apiKey);
 
     env->ReleaseStringUTFChars(key, keyStr);
 }
@@ -88,13 +87,13 @@ void Java_eu_kudan_ar_CameraFragment_initialiseArbiTracker(
     parameters.guessIntrinsics();
 
     // Important: set the intrinsic parameters on the tracker
-    arbiTracker->setCameraParameters(parameters, 10, 1000);
+    arbiTracker->setCameraParameters(parameters);
 
     // Set API key
     const char *keyStr = env->GetStringUTFChars(key, 0);
     std::string apiKey = std::string(keyStr);
 
-    arbiTracker->setApiKey(keyStr);
+    arbiTracker->setApiKey(apiKey);
 
     env->ReleaseStringUTFChars(key, keyStr);
 }
@@ -124,7 +123,7 @@ void Java_eu_kudan_ar_CameraFragment_startArbiTracker(
     }
     else {
 
-        startPosition = KudanVector3(0,0,300); // in front of the camera
+        startPosition = KudanVector3(0,0,600); // in front of the camera
         startOrientation = KudanQuaternion(1,0,0,0); // without rotation
 
         arbitrackScale = 100;
@@ -240,7 +239,7 @@ jfloatArray Java_eu_kudan_ar_CameraFragment_processImageTrackerFrame(
         // Project the point (0,0,0) using the camera intrinsics and extrinsics. Also need to pass in the image with (see function)
         KudanVector3 position = tracked->getPosition();
         KudanQuaternion orientation = tracked->getOrientation();
-        KudanVector2 projection = project(origin, K, position, orientation, width);
+        KudanVector2 projection = project(origin, K, position, orientation);
 
 
 
@@ -258,16 +257,16 @@ jfloatArray Java_eu_kudan_ar_CameraFragment_processImageTrackerFrame(
 
 
         KudanVector3 corner00(-w/2.f, -h/2.f, 0);
-        KudanVector2 projection00 = project(corner00, K, position, orientation, width);
+        KudanVector2 projection00 = project(corner00, K, position, orientation);
 
         KudanVector3 corner01(-w/2.f, h/2.f, 0);
-        KudanVector2 projection01 = project(corner01, K, position, orientation, width);
+        KudanVector2 projection01 = project(corner01, K, position, orientation);
 
         KudanVector3 corner11(w/2.f, h/2.f, 0);
-        KudanVector2 projection11 = project(corner11, K, position, orientation, width);
+        KudanVector2 projection11 = project(corner11, K, position, orientation);
 
         KudanVector3 corner10(w/2.f, -h/2.f, 0);
-        KudanVector2 projection10 = project(corner10, K, position, orientation, width);
+        KudanVector2 projection10 = project(corner10, K, position, orientation);
 
         trackedData[2] = projection00.x;
         trackedData[3] = projection00.y;
@@ -292,6 +291,7 @@ jfloatArray Java_eu_kudan_ar_CameraFragment_processArbiTrackerFrame(
         JNIEnv *env,
         jobject /* this */,
         jbyteArray image,
+        jfloatArray gyroOrentation,
         jint width,
         jint height,
         jint channels,
@@ -299,7 +299,17 @@ jfloatArray Java_eu_kudan_ar_CameraFragment_processArbiTrackerFrame(
         jboolean requireFlip) {
 
     jbyte *data = env->GetByteArrayElements(image, 0);
+    jfloat *orientation = env->GetFloatArrayElements(gyroOrentation, 0);
+    
+    // Important: before calling processFrame on Arbitrack, it is necessary to provide an orientation estimate from some other sensor, e.g. Android IMU
+    // If this is not done, then Arbitrack will not output an orientation
+    
+    // Use this function to set the orientation:
+    // KudanQuaternion constructor takes values in (x,y,z,w) order, so we compensate.
+    KudanQuaternion gyroQuaternion = KudanQuaternion(orientation[1], orientation[2], orientation[3], orientation[0]);
 
+    arbiTracker->setSensedOrientation( gyroQuaternion );
+    
     unsigned char *base = (unsigned char *) data;
 
     arbiTracker->processFrame(base, width, height, 1 /* assume one channel*/, padding, false /* don't need to flip the image*/);
@@ -334,23 +344,23 @@ jfloatArray Java_eu_kudan_ar_CameraFragment_processArbiTrackerFrame(
 
             KudanVector3 origin(0,0,0);
 
-            KudanVector2 projection = project(origin, K, position, orientation, width);
+            KudanVector2 projection = project(origin, K, position, orientation);
 
             trackedData[0] = projection.x;
             trackedData[1] = projection.y;
 
             // Get the four outer grid corners by projecting  +/- the arbitrack scale in (x,y)
             KudanVector3 corner00(-arbitrackScale, -arbitrackScale, 0);
-            KudanVector2 projection00 = project(corner00, K, position, orientation, width);
+            KudanVector2 projection00 = project(corner00, K, position, orientation);
 
             KudanVector3 corner01(-arbitrackScale, arbitrackScale, 0);
-            KudanVector2 projection01 = project(corner01, K, position, orientation, width);
+            KudanVector2 projection01 = project(corner01, K, position, orientation);
 
             KudanVector3 corner11(arbitrackScale, arbitrackScale, 0);
-            KudanVector2 projection11 = project(corner11, K, position, orientation, width);
+            KudanVector2 projection11 = project(corner11, K, position, orientation);
 
             KudanVector3 corner10(arbitrackScale, -arbitrackScale, 0);
-            KudanVector2 projection10 = project(corner10, K, position, orientation, width);
+            KudanVector2 projection10 = project(corner10, K, position, orientation);
 
 
             // Save as four separate points as properties on the MarkerTracker:
@@ -374,4 +384,5 @@ jfloatArray Java_eu_kudan_ar_CameraFragment_processArbiTrackerFrame(
 
     return NULL;
 }
-}
+
+} // extern "C"

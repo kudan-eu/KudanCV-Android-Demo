@@ -15,6 +15,10 @@ import android.graphics.Matrix;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -48,7 +52,7 @@ import static android.hardware.camera2.CameraMetadata.LENS_FACING_BACK;
 /**
  * A Fragment responsible for maintaining a camera preview and both image and markerless tracking and image detection.
  */
-public class CameraFragment extends Fragment {
+public class CameraFragment extends Fragment implements SensorEventListener {
 
     //region Member Variables
 
@@ -176,6 +180,13 @@ public class CameraFragment extends Fragment {
         public void surfaceDestroyed(SurfaceHolder holder) {
         }
     };
+
+    /**
+     * Objects for holding the current device rotation in the arbitracker coordinate system.
+     */
+    private SensorManager mSensorManager;
+    private Sensor mSensor;
+    private final float[] mRotationQuaternion = new float[4];
 
     /**
      * Pre-allocated objects for transforming primitive drawing coordinates from camera frame space
@@ -349,6 +360,7 @@ public class CameraFragment extends Fragment {
 
         teardownCamera();
         teardownBackgroundThread();
+        teardownRotationSensor();
 
         super.onPause();
     }
@@ -359,6 +371,7 @@ public class CameraFragment extends Fragment {
         super.onResume();
 
         setupBackgroundThread();
+        setupRotationSensor();
 
         if (mSurfaceView.getHolder().getSurface().isValid()) {
             setupCameraDevice();
@@ -422,6 +435,15 @@ public class CameraFragment extends Fragment {
         mBackgroundThread = new HandlerThread("BackgroundCameraThread");
         mBackgroundThread.start();
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+    }
+
+    /**
+     * Setup the rotation sensor for receiving data on the device orientation status.
+     */
+    private void setupRotationSensor() {
+        mSensorManager = (SensorManager) getActivity().getSystemService(Context.SENSOR_SERVICE);
+        mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        mSensorManager.registerListener(this, mSensor, 30000);
     }
 
     /**
@@ -580,9 +602,58 @@ public class CameraFragment extends Fragment {
         }
     }
 
+    /**
+     * Stops the rotation sensor.
+     */
+    private void teardownRotationSensor() {
+
+        mSensorManager.unregisterListener(this);
+
+        mSensorManager = null;
+        mSensor = null;
+    }
+
     //endregion
 
     //region Frame Processing Methods
+
+    /**
+     * Callback method for receiving new changes to the device rotation.
+     *
+     * @param event Object containing the device rotation data.
+     */
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+
+        if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+
+            // Get the current device rotation.
+            float temp1[] = new float[16];
+            float temp2[] = new float[16];
+
+            SensorManager.getRotationMatrixFromVector(
+                    temp1 , event.values);
+
+            // Remap the device rotation to the arbitracker coordinate system.
+            SensorManager.remapCoordinateSystem(temp1, SensorManager.AXIS_MINUS_Y, SensorManager.AXIS_MINUS_X, temp2);
+
+            // Convert the rotation matrix into a quaternion.
+            double w = Math.sqrt(1.0 + temp2[0] + temp2[5] + temp2[10]) / 2.0;
+            double w4 = (4.0 * w);
+            double x = (temp2[9] - temp2[6]) / w4 ;
+            double y = (temp2[2] - temp2[8]) / w4 ;
+            double z = (temp2[4] - temp2[1]) / w4 ;
+
+            mRotationQuaternion[0] = (float)w;
+            mRotationQuaternion[1] = (float)x;
+            mRotationQuaternion[2] = (float)y;
+            mRotationQuaternion[3] = (float)z;
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+    }
 
     /**
      * Processes tracking on a camera frame's data.
@@ -614,7 +685,8 @@ public class CameraFragment extends Fragment {
 
             if (trackedData != null) {
                 newState = TrackerState.IMAGE_TRACKING;
-            } else {
+            }
+            else {
                 newState = TrackerState.IMAGE_DETECTION;
             }
         }
@@ -622,8 +694,29 @@ public class CameraFragment extends Fragment {
         // Else perform markerless tracking.
         else if (currentState == TrackerState.ARBITRACK) {
 
+            // Inverse the device rotation quaternion to counteract it's rotation in the tracker.
+            float w = mRotationQuaternion[0];
+            float x = mRotationQuaternion[1];
+            float y = mRotationQuaternion[2];
+            float z = mRotationQuaternion[3];
+
+            float norm = w * w + x * x + y * y + z * z;
+
+            if (norm > 0.0) {
+                float invNorm = 1.0f / norm;
+                x *= -invNorm;
+                y *= -invNorm;
+                z *= -invNorm;
+                w *= invNorm;
+            }
+
+            mRotationQuaternion[0] = w;
+            mRotationQuaternion[1] = x;
+            mRotationQuaternion[2] = y;
+            mRotationQuaternion[3] = z;
+
             // Native call to the markerless tracking object.
-            trackedData = processArbiTrackerFrame(data, width, height, 1, 0, false);
+            trackedData = processArbiTrackerFrame(data, mRotationQuaternion, width, height, 1, 0, false);
         }
 
         if (trackedData != null) {
@@ -863,6 +956,7 @@ public class CameraFragment extends Fragment {
      * Processes an image through the native markerless tracker object and returns tracking data.
      *
      * @param image Array containing the camera frame data.
+     * @param gyroOrientation Array containing the device rotation quaternion values in the order w, x, y, z.
      * @param width The width of the camera image.
      * @param height The height of the camera image.
      * @param channels The number of channels contained in the camera frame.
@@ -872,6 +966,7 @@ public class CameraFragment extends Fragment {
      */
     private native float[] processArbiTrackerFrame(
             byte[] image,
+            float[] gyroOrientation,
             int width,
             int height,
             int channels,
