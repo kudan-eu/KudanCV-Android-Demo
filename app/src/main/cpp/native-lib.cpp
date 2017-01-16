@@ -3,7 +3,7 @@
 #include <android/log.h>
 #include <android/bitmap.h>
 
-#include <Interface.h>
+#include <KudanCV.h>
 
 /**
  * Helper method for projecting 3D tracking points to screen-space.
